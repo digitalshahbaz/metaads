@@ -29,6 +29,10 @@ The token stays on the server: the browser only talks to `/api/ads`, which calls
 
 Meta's API returns **all ad types only for ads delivered in the EU/UK**. For other countries (including India and the US), the API returns only political/issue ads; commercial ads there are visible on the public Ad Library website, but not through the API. Pick an EU country (e.g. `DE`, `FR`) or `GB` to research commercial ads, or use "View in Ad Library" to open any ad on the website.
 
+## Roadmap
+
+The plan for the full Meta Ads Intelligence Dashboard is in [docs/PLAN.md](docs/PLAN.md). It covers the architecture, data providers, database schema, adapter interface, build phases and risks.
+
 ## Project structure
 
 ```
