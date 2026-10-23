@@ -1,0 +1,69 @@
+{
+ "channel": "#growth",
+ "blocks": [
+  {
+   "type": "header",
+   "text": {
+    "type": "plain_text",
+    "text": "Weekly Meta Report — w/c 17 Sep 2026"
+   }
+  },
+  {
+   "type": "section",
+   "text": {
+    "type": "mrkdwn",
+    "text": "*Digital Shahbaz* (act 237212394898837) · 17–23 Sep vs 10–16 Sep\n*Health: :red_circle: RED*: ROAS 0.89 vs ~1.2 break-even; cost/purchase ₹1,019 (+23% vs ₹830). ₹999 bundle alone: ROAS 1.01, flat WoW."
+   }
+  },
+  {
+   "type": "section",
+   "fields": [
+    {
+     "type": "mrkdwn",
+     "text": "*ROAS*\n0.89 ▼0.4%"
+    },
+    {
+     "type": "mrkdwn",
+     "text": "*Cost/purchase*\n₹1,019 ▲12.0%"
+    },
+    {
+     "type": "mrkdwn",
+     "text": "*Spend*\n₹27,518 ▼16.0%"
+    },
+    {
+     "type": "mrkdwn",
+     "text": "*Purchases*\n27 ▼25.0%"
+    },
+    {
+     "type": "mrkdwn",
+     "text": "*CPM*\n₹606 ▲96.8% (campaign mix)"
+    },
+    {
+     "type": "mrkdwn",
+     "text": "*Frequency*\n2.07 ▼43.1%"
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "text": {
+    "type": "mrkdwn",
+    "text": "*Top creatives (ROAS, ≥₹400)*\n1. Only_300_Founding: 2.41 (₹829, 2 purch.)\n2. Generated_15_Sales: 2.15 (₹465, 1)\n3. AiVid 2 – Meta Board: 1.31 (₹3,047, 4)"
+   }
+  },
+  {
+   "type": "section",
+   "text": {
+    "type": "mrkdwn",
+    "text": "*Underperformers*\n1. AiVid 1 – Bhai 5 Naye Client: ₹1,285, 0 purch.\n2. V-2 Kya aap bhi: ₹1,949, ROAS 0.51\n3. Ad-6 Need More Leads: ₹694, 0 purch."
+   }
+  },
+  {
+   "type": "section",
+   "text": {
+    "type": "mrkdwn",
+    "text": "*Actions*\n1. *Budget:* pause V-2, Ad-6, AiVid 1 in the New LP campaign (ROAS 0.81). Raise ABO2000 (ROAS 1.44, ₹695/purch.) +20% once its 3-day cost/purch. < ₹830.\n2. *Creative:* 3–4 new ads in the AiVid 2 + \"Only 300 Founding\" styles, in ONE new ad set.\n3. *Audience:* write for men 25–54 (83% of purchases). Retargeting must optimise for Purchase, not traffic (352 LPV → 0 checkouts)."
+   }
+  }
+ ]
+}
