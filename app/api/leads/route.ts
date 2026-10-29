@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { normalizeLeadInput } from "@/lib/leads";
+import { upsertLead } from "@/lib/upsert";
 
 // Webhook for incoming leads (website forms, Zapier, Make, Pabbly, Meta Lead Ads via an automation tool).
 // Auth: header `x-api-key: <LEADS_API_KEY>` or `?key=<LEADS_API_KEY>`.
@@ -41,21 +42,30 @@ export async function POST(req: NextRequest) {
   const items = Array.isArray(body.leads) ? (body.leads as Record<string, unknown>[]) : [body];
   const sql = await db();
   const ids: number[] = [];
+  const merged: number[] = [];
+  const params = req.nextUrl.searchParams;
   for (const raw of items) {
     const lower: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(raw ?? {})) lower[k.toLowerCase()] = v;
-    const l = normalizeLeadInput({ source: req.nextUrl.searchParams.get("source") ?? "api", ...lower });
-    const [row] = await sql`
-      INSERT INTO leads (name, email, phone, company, source, status, value, tags, notes, follow_up)
-      VALUES (${l.name}, ${l.email}, ${l.phone}, ${l.company}, ${l.source}, ${l.status},
-              ${l.value}, ${l.tags}, ${l.notes}, ${l.follow_up})
-      RETURNING id`;
-    await sql`INSERT INTO lead_activities (lead_id, type, content)
-      VALUES (${row.id}, 'system', ${`Lead received via API (source: ${l.source})`})`;
-    ids.push(row.id);
+    const l = normalizeLeadInput({
+      source: params.get("source") ?? "api",
+      business: params.get("business") ?? undefined,
+      funnel: params.get("funnel") ?? undefined,
+      ...lower,
+    });
+    const funnel = l.funnel ?? `API (${l.source})`;
+    const now = new Date().toISOString();
+    const res = await upsertLead(sql, {
+      ...l,
+      funnels: [funnel],
+      last_seen: now,
+      touchpoints: [{ business: l.business, funnel, sheet: "Webhook", date: now }],
+    }, `Lead received via API (${funnel})`);
+    ids.push(res.id);
+    if (!res.created) merged.push(res.id);
   }
   revalidatePath("/", "layout");
-  return NextResponse.json({ ok: true, ids }, { status: 201 });
+  return NextResponse.json({ ok: true, ids, merged_into_existing: merged }, { status: 201 });
 }
 
 export async function GET(req: NextRequest) {

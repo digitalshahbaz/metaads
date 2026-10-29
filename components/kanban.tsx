@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { setStatus } from "@/app/actions";
-import { STATUSES, formatDate, formatMoney, sourceLabel, type Lead } from "@/lib/leads";
+import { STATUSES, formatDate, formatMoney, type Lead } from "@/lib/leads";
+import { BusinessBadge, ScoreBadge } from "./status-badge";
 
 export function Kanban({ leads }: { leads: Lead[] }) {
   const [optimistic, move] = useOptimistic(leads, (state, { id, status }: { id: number; status: Lead["status"] }) =>
@@ -53,10 +54,11 @@ export function Kanban({ leads }: { leads: Lead[] }) {
                 >
                   <Link href={`/leads/${l.id}`} className="font-medium hover:underline">{l.name}</Link>
                   {l.company && <div className="text-xs text-zinc-500">{l.company}</div>}
-                  <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
-                    <span>{sourceLabel(l.source)}</span>
+                  <div className="mt-2 flex items-center justify-between gap-1 text-xs text-zinc-500">
+                    <span className="flex gap-1"><BusinessBadge business={l.business} /><ScoreBadge score={l.score} temperature={l.temperature} /></span>
                     {Number(l.value) > 0 && <span className="tabular-nums">{formatMoney(l.value)}</span>}
                   </div>
+                  <div className="mt-1 truncate text-xs text-zinc-500" title={l.funnels.join("\n")}>{l.funnels[l.funnels.length - 1]}</div>
                   {l.follow_up && <div className="mt-1 text-xs text-zinc-500">Follow-up: {formatDate(l.follow_up)}</div>}
                   <select
                     aria-label="Move to"

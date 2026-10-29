@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkPassword, COOKIE, cookieMaxAge, createToken } from "@/lib/auth";
-import { isStatus, normalizeLeadInput, statusMeta } from "@/lib/leads";
+import { isStatus, normalizeLeadInput, scoreLead, statusMeta, type Lead, type Purchase } from "@/lib/leads";
+import { upsertLead, type LeadInput } from "@/lib/upsert";
 
 export async function login(_: unknown, form: FormData) {
   if (!process.env.APP_PASSWORD) return { error: "APP_PASSWORD is not set on the server." };
@@ -40,14 +41,22 @@ function refresh() {
 export async function createLead(form: FormData) {
   const l = normalizeLeadInput(formToObject(form));
   const sql = await db();
-  const [row] = await sql`
-    INSERT INTO leads (name, email, phone, company, source, status, value, tags, notes, follow_up)
-    VALUES (${l.name}, ${l.email}, ${l.phone}, ${l.company}, ${l.source}, ${l.status},
-            ${l.value}, ${l.tags}, ${l.notes}, ${l.follow_up})
-    RETURNING id`;
-  await sql`INSERT INTO lead_activities (lead_id, type, content) VALUES (${row.id}, 'system', 'Lead created')`;
+  const { id, created } = await upsertLead(
+    sql,
+    { ...l, funnels: l.funnel ? [l.funnel] : [], last_seen: new Date().toISOString() },
+    "Lead added manually",
+  );
+  if (!created) await rescore(sql, id);
   refresh();
-  redirect(`/leads/${row.id}`);
+  redirect(`/leads/${id}`);
+}
+
+/** Recompute score/temperature after a manual change. */
+async function rescore(sql: Awaited<ReturnType<typeof db>>, id: number) {
+  const [l] = await sql<Lead[]>`SELECT * FROM leads WHERE id = ${id}`;
+  if (!l) return;
+  const { score, temperature } = scoreLead({ ...l, total_spent: Number(l.total_spent) });
+  await sql`UPDATE leads SET score = ${score}, temperature = ${temperature} WHERE id = ${id}`;
 }
 
 export async function updateLead(id: number, form: FormData) {
@@ -57,8 +66,10 @@ export async function updateLead(id: number, form: FormData) {
   await sql`
     UPDATE leads SET name = ${l.name}, email = ${l.email}, phone = ${l.phone}, company = ${l.company},
       source = ${l.source}, status = ${l.status}, value = ${l.value}, tags = ${l.tags},
-      notes = ${l.notes}, follow_up = ${l.follow_up}, updated_at = now()
+      notes = ${l.notes}, follow_up = ${l.follow_up}, business = ${l.business},
+      profession = ${l.profession}, city = ${l.city}, updated_at = now()
     WHERE id = ${id}`;
+  await rescore(sql, id);
   if (before && before.status !== l.status) {
     await sql`INSERT INTO lead_activities (lead_id, type, content)
       VALUES (${id}, 'status', ${`Status: ${statusMeta(before.status).label} → ${statusMeta(l.status).label}`})`;
@@ -75,6 +86,7 @@ export async function setStatus(id: number, status: string) {
   await sql`UPDATE leads SET status = ${status}, updated_at = now() WHERE id = ${id}`;
   await sql`INSERT INTO lead_activities (lead_id, type, content)
     VALUES (${id}, 'status', ${`Status: ${statusMeta(before.status).label} → ${statusMeta(status).label}`})`;
+  await rescore(sql, id);
   refresh();
 }
 
@@ -115,38 +127,44 @@ export async function deleteActivity(leadId: number, activityId: number) {
   refresh();
 }
 
-export async function importLeads(rows: Record<string, string>[], defaultSource: string) {
+export async function importLeads(rows: Record<string, string>[], defaultSource: string, business: string, funnel: string) {
   const sql = await db();
-  const clean = rows
-    .map((r) => normalizeLeadInput({ source: defaultSource || "import", ...lowerKeys(r) }))
-    .filter((l) => l.name !== "Unnamed lead" || l.email || l.phone);
-  if (!clean.length) return { inserted: 0, skipped: rows.length };
-
-  // Skip rows whose email or phone already exists.
-  const existing = await sql<{ email: string | null; phone: string | null }[]>`SELECT email, phone FROM leads`;
-  const emails = new Set(existing.map((e) => e.email?.toLowerCase()).filter(Boolean));
-  const phones = new Set(existing.map((e) => normPhone(e.phone)).filter(Boolean));
-  const fresh = clean.filter((l) => {
-    const dup = (l.email && emails.has(l.email.toLowerCase())) || (l.phone && phones.has(normPhone(l.phone)));
-    if (l.email) emails.add(l.email.toLowerCase());
-    if (l.phone) phones.add(normPhone(l.phone));
-    return !dup;
-  });
-
-  for (let i = 0; i < fresh.length; i += 500) {
-    const chunk = fresh.slice(i, i + 500).map((l) => ({ ...l, tags: `{${l.tags.map((t) => JSON.stringify(t)).join(",")}}` }));
-    await sql`INSERT INTO leads ${sql(chunk, "name", "email", "phone", "company", "source", "status", "value", "tags", "notes", "follow_up")}`;
+  let created = 0, merged = 0, skipped = 0;
+  for (const r of rows) {
+    const l = normalizeLeadInput({ source: defaultSource || "import", business, ...lowerKeys(r) });
+    if (l.name === "Unnamed lead" && !l.email && !l.phone) { skipped++; continue; }
+    const name = funnel || l.funnel || "CSV import";
+    const res = await upsertLead(sql, {
+      ...l,
+      funnels: [name],
+      touchpoints: [{ business: l.business, funnel: name, sheet: "CSV import", date: new Date().toISOString() }],
+      last_seen: new Date().toISOString(),
+    }, `Imported from CSV (${name})`);
+    if (res.created) created++; else merged++;
   }
   refresh();
-  return { inserted: fresh.length, skipped: rows.length - fresh.length };
+  return { created, merged, skipped };
+}
+
+/** Bulk import of pre-cleaned leads (the JSON bundle produced by the data clean-up). */
+export async function importBundle(leads: (LeadInput & { purchases?: Purchase[] })[]) {
+  const sql = await db();
+  let created = 0, merged = 0;
+  for (const l of leads) {
+    if (!l || typeof l.name !== "string") continue;
+    const res = await upsertLead(sql, l);
+    if (res.created) {
+      created++;
+      await sql`INSERT INTO lead_activities (lead_id, type, content)
+        VALUES (${res.id}, 'system', ${`Imported from lead sheets: ${(l.funnels ?? []).join(", ")}`})`;
+    } else merged++;
+  }
+  refresh();
+  return { created, merged };
 }
 
 function lowerKeys(r: Record<string, string>) {
   const o: Record<string, string> = {};
   for (const [k, v] of Object.entries(r)) o[k.trim().toLowerCase()] = v;
   return o;
-}
-
-function normPhone(p: string | null) {
-  return p ? p.replace(/\D/g, "").slice(-10) : "";
 }

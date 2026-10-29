@@ -17,6 +17,7 @@ function client() {
       max: 5,
       idle_timeout: 20,
       prepare: false, // works with pgbouncer / Neon pooled URLs
+      onnotice: () => {}, // silence "already exists, skipping" from schema setup
     });
   }
   return globalThis.__sql;
@@ -50,6 +51,36 @@ async function createSchema(sql: postgres.Sql) {
   await sql`CREATE INDEX IF NOT EXISTS leads_status_idx ON leads(status)`;
   await sql`CREATE INDEX IF NOT EXISTS leads_created_idx ON leads(created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS activities_lead_idx ON lead_activities(lead_id, created_at DESC)`;
+
+  // v2: business segregation, funnels, purchases, scoring, qualification details.
+  await sql`
+    ALTER TABLE leads
+      ADD COLUMN IF NOT EXISTS business     TEXT NOT NULL DEFAULT 'dmm',
+      ADD COLUMN IF NOT EXISTS funnels      TEXT[] NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS is_customer  BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS total_spent  NUMERIC(12,2) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS purchases    JSONB NOT NULL DEFAULT '[]',
+      ADD COLUMN IF NOT EXISTS score        INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS temperature  TEXT NOT NULL DEFAULT 'cold',
+      ADD COLUMN IF NOT EXISTS profession   TEXT,
+      ADD COLUMN IF NOT EXISTS city         TEXT,
+      ADD COLUMN IF NOT EXISTS details      JSONB NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS last_seen    TIMESTAMPTZ`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS lead_touchpoints (
+      id          SERIAL PRIMARY KEY,
+      lead_id     INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      business    TEXT NOT NULL,
+      funnel      TEXT NOT NULL,
+      sheet       TEXT,
+      captured_at TIMESTAMPTZ,
+      purchase    JSONB
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_business_idx ON leads(business)`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_score_idx ON leads(score DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_email_idx ON leads(lower(email))`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_phone_idx ON leads(phone)`;
+  await sql`CREATE INDEX IF NOT EXISTS touchpoints_lead_idx ON lead_touchpoints(lead_id, captured_at)`;
 }
 
 /** Returns a ready-to-use client; creates tables on first use. */

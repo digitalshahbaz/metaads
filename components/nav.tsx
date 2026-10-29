@@ -7,6 +7,7 @@ import { logout } from "@/app/actions";
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/leads", label: "Leads" },
+  { href: "/segments", label: "Segments" },
   { href: "/pipeline", label: "Pipeline" },
   { href: "/import", label: "Import / Export" },
   { href: "/settings", label: "Integrations" },
