@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { bulkSetStatus, deleteLeads } from "@/app/actions";
-import { STATUSES, formatDate, formatMoney, sourceLabel, type Lead } from "@/lib/leads";
-import { StatusBadge } from "./status-badge";
+import { STATUSES, formatDate, formatMoney, type Lead } from "@/lib/leads";
+import { BusinessBadge, ScoreBadge, StatusBadge } from "./status-badge";
 
 export function LeadsTable({ leads }: { leads: Lead[] }) {
   const [selected, setSelected] = useState<number[]>([]);
@@ -58,11 +58,11 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
               </th>
               <th className="p-3 font-medium">Name</th>
               <th className="p-3 font-medium">Contact</th>
+              <th className="p-3 font-medium">Score</th>
+              <th className="p-3 font-medium">Funnels</th>
+              <th className="p-3 text-right font-medium">Spent</th>
               <th className="p-3 font-medium">Status</th>
-              <th className="p-3 font-medium">Source</th>
-              <th className="p-3 text-right font-medium">Value</th>
-              <th className="p-3 font-medium">Follow-up</th>
-              <th className="p-3 font-medium">Added</th>
+              <th className="p-3 font-medium">Last active</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -72,23 +72,26 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
                   <input type="checkbox" checked={selected.includes(l.id)} onChange={() => toggle(l.id)} aria-label={`Select ${l.name}`} />
                 </td>
                 <td className="p-3">
-                  <Link href={`/leads/${l.id}`} className="font-medium hover:text-indigo-600 hover:underline">{l.name}</Link>
-                  {l.company && <div className="text-xs text-zinc-500">{l.company}</div>}
-                  {l.tags.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {l.tags.map((t) => <span key={t} className="badge bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{t}</span>)}
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <BusinessBadge business={l.business} />
+                    <Link href={`/leads/${l.id}`} className="font-medium hover:text-indigo-600 hover:underline">{l.name}</Link>
+                  </div>
+                  {(l.profession || l.company || l.city) && (
+                    <div className="mt-0.5 max-w-64 truncate text-xs text-zinc-500">{[l.profession, l.company, l.city].filter(Boolean).join(" · ")}</div>
                   )}
                 </td>
                 <td className="p-3 text-xs">
-                  {l.email && <a href={`mailto:${l.email}`} className="block hover:underline">{l.email}</a>}
+                  {l.email && <a href={`mailto:${l.email}`} className="block max-w-56 truncate hover:underline">{l.email}</a>}
                   {l.phone && <a href={`tel:${l.phone}`} className="block text-zinc-500 hover:underline">{l.phone}</a>}
                 </td>
+                <td className="p-3"><ScoreBadge score={l.score} temperature={l.temperature} /></td>
+                <td className="p-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div className="max-w-56 truncate" title={l.funnels.join("\n")}>{l.funnels[l.funnels.length - 1] ?? "—"}</div>
+                  {l.funnels.length > 1 && <div className="text-zinc-400">+{l.funnels.length - 1} more</div>}
+                </td>
+                <td className="p-3 text-right tabular-nums">{l.is_customer ? (Number(l.total_spent) > 0 ? `₹${formatMoney(l.total_spent)}` : "Bought") : "—"}</td>
                 <td className="p-3"><StatusBadge status={l.status} /></td>
-                <td className="p-3 text-zinc-600 dark:text-zinc-400">{sourceLabel(l.source)}</td>
-                <td className="p-3 text-right tabular-nums">{Number(l.value) ? formatMoney(l.value) : "—"}</td>
-                <td className="p-3 whitespace-nowrap text-zinc-600 dark:text-zinc-400">{formatDate(l.follow_up)}</td>
-                <td className="p-3 whitespace-nowrap text-zinc-500">{formatDate(l.created_at)}</td>
+                <td className="p-3 whitespace-nowrap text-zinc-500">{formatDate(l.last_seen ?? l.created_at)}</td>
               </tr>
             ))}
           </tbody>

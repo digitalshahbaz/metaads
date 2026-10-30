@@ -3,6 +3,10 @@
 A simple personal CRM to keep all your leads in one place. Built with Next.js + Postgres, ready to host on Vercel.
 
 **Features**
+- 🏢 Two businesses in one CRM: **Digimark Media** (service) and **Digital Shahbaz** (education), with a switcher on every page
+- 🔁 Smart de-duplication: the same email/phone from any form, import or webhook is merged into one person, with their full **journey** (every funnel and purchase)
+- 🔥 Lead scoring (hot / warm / cold) from revenue, ad spend, purchases, email engagement and recency
+- 🎯 **Segments**: ready-made audiences (hot coaches, buyers to upsell, registrants who never bought…) with one-click CSV export
 - 🔐 Password-protected (single user)
 - 📊 Dashboard: totals, pipeline value, win rate, follow-ups due, leads by source
 - 📋 Leads list: search, filter by status/source, sort, bulk status change / delete
