@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Lead CRM Connector
- * Description: Sends every form submission on this WordPress site to your Lead CRM (POST /api/leads). Works with Contact Form 7, WPForms, Elementor Pro Forms, Gravity Forms, Fluent Forms and WooCommerce orders.
- * Version:     1.0.0
+ * Description: Build funnels and lead forms in WordPress/Elementor and send every lead to your Lead CRM (POST /api/leads). Also captures Contact Form 7, WPForms, Elementor Pro Forms, Gravity Forms, Fluent Forms and WooCommerce orders.
+ * Version:     1.1.0
  * Author:      Digimark Media
  * License:     GPL-2.0-or-later
  */
@@ -11,6 +11,10 @@ if (!defined('ABSPATH')) exit;
 
 const LCRM_OPT = 'lcrm_settings';
 const LCRM_UTM_COOKIE = 'lcrm_utm';
+const LCRM_QUEUE = 'lcrm_failed_leads';
+
+require_once __DIR__ . '/includes/funnels.php';
+require_once __DIR__ . '/includes/form.php';
 
 /* ---------------------------------------------------------------------------
  * Settings
@@ -27,7 +31,9 @@ function lcrm_settings() {
 }
 
 add_action('admin_menu', function () {
-    add_options_page('Lead CRM', 'Lead CRM', 'manage_options', 'lead-crm', 'lcrm_render_settings');
+    add_menu_page('Lead CRM', 'Lead CRM', 'manage_options', 'lead-crm', 'lcrm_render_funnels', 'dashicons-filter', 26);
+    add_submenu_page('lead-crm', 'Funnels', 'Funnels', 'manage_options', 'lead-crm', 'lcrm_render_funnels');
+    add_submenu_page('lead-crm', 'Lead CRM settings', 'Settings', 'manage_options', 'lead-crm-settings', 'lcrm_render_settings');
 });
 
 add_action('admin_init', function () {
@@ -51,7 +57,7 @@ function lcrm_render_settings() {
             'email'  => 'wp-test@example.com',
             'notes'  => 'Sent from the Lead CRM Connector settings page.',
             'funnel' => 'WordPress (test)',
-        ]);
+        ], false);
     }
     ?>
     <div class="wrap">
@@ -60,6 +66,9 @@ function lcrm_render_settings() {
             <div class="notice notice-<?php echo $test === true ? 'success' : 'error'; ?>"><p>
                 <?php echo $test === true ? 'Test lead sent — check your CRM.' : 'Test failed: ' . esc_html($test); ?>
             </p></div>
+        <?php endif; ?>
+        <?php $queued = count((array) get_option(LCRM_QUEUE, [])); if ($queued): ?>
+            <div class="notice notice-warning"><p><?php echo (int) $queued; ?> lead(s) could not reach the CRM yet — they are retried automatically every hour.</p></div>
         <?php endif; ?>
         <form method="post" action="options.php">
             <?php settings_fields('lcrm'); ?>
@@ -104,11 +113,16 @@ add_action('init', function () {
         if (!empty($_GET[$k])) $utm[$k] = sanitize_text_field(wp_unslash($_GET[$k]));
     }
     if ($utm) {
-        $utm['landing_page'] = esc_url_raw(home_url(add_query_arg([])));
+        $utm['landing_page'] = lcrm_current_url();
         setcookie(LCRM_UTM_COOKIE, wp_json_encode($utm), time() + 30 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
         $_COOKIE[LCRM_UTM_COOKIE] = wp_json_encode($utm);
     }
 });
+
+function lcrm_current_url() {
+    $host = sanitize_text_field(wp_unslash($_SERVER['HTTP_HOST'] ?? wp_parse_url(home_url(), PHP_URL_HOST)));
+    return esc_url_raw((is_ssl() ? 'https://' : 'http://') . $host . wp_unslash($_SERVER['REQUEST_URI'] ?? '/'));
+}
 
 function lcrm_utm() {
     if (empty($_COOKIE[LCRM_UTM_COOKIE])) return [];
@@ -120,19 +134,37 @@ function lcrm_utm() {
  * Sending
  * ------------------------------------------------------------------------ */
 
-/** @return true|string true on success, otherwise an error message. */
-function lcrm_send(array $lead) {
+/**
+ * Send a lead to the CRM. Leads are tagged with the funnel/business of the page they came from
+ * (see includes/funnels.php). If the CRM can't be reached the lead is queued and retried hourly.
+ *
+ * @return true|string true on success, otherwise an error message.
+ */
+function lcrm_send(array $lead, $queue_on_fail = true) {
     $s = lcrm_settings();
-    if (!$s['crm_url'] || !$s['api_key']) return 'CRM URL or API key is not set (Settings → Lead CRM).';
+    if (!$s['crm_url'] || !$s['api_key']) return 'CRM URL or API key is not set (Lead CRM → Settings).';
 
     $lead = array_merge(lcrm_utm(), array_filter($lead, fn($v) => $v !== '' && $v !== null));
     if (empty($lead['page_url']) && !empty($_SERVER['HTTP_REFERER'])) $lead['page_url'] = esc_url_raw(wp_unslash($_SERVER['HTTP_REFERER']));
+    $lead = apply_filters('lcrm_lead', lcrm_apply_funnel($lead));
 
+    $result = lcrm_post($lead);
+    if ($result !== true && $queue_on_fail) {
+        $queue = (array) get_option(LCRM_QUEUE, []);
+        $queue[] = $lead;
+        update_option(LCRM_QUEUE, array_slice($queue, -200), false);
+    }
+    return $result;
+}
+
+/** @return true|string */
+function lcrm_post(array $lead) {
+    $s = lcrm_settings();
     $url = add_query_arg(['source' => $s['source'], 'business' => $s['business']], $s['crm_url'] . '/api/leads');
     $res = wp_remote_post($url, [
         'timeout' => 10,
         'headers' => ['Content-Type' => 'application/json', 'x-api-key' => $s['api_key']],
-        'body'    => wp_json_encode(apply_filters('lcrm_lead', $lead)),
+        'body'    => wp_json_encode($lead),
     ]);
     if (is_wp_error($res)) {
         error_log('[Lead CRM] ' . $res->get_error_message());
@@ -145,6 +177,20 @@ function lcrm_send(array $lead) {
     }
     return true;
 }
+
+// Retry queued leads every hour.
+add_action('lcrm_retry_queue', function () {
+    $queue = (array) get_option(LCRM_QUEUE, []);
+    if (!$queue) return;
+    $left = array_values(array_filter($queue, fn($lead) => lcrm_post($lead) !== true));
+    update_option(LCRM_QUEUE, $left, false);
+});
+register_activation_hook(__FILE__, function () {
+    if (!wp_next_scheduled('lcrm_retry_queue')) wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', 'lcrm_retry_queue');
+});
+register_deactivation_hook(__FILE__, function () {
+    wp_clear_scheduled_hook('lcrm_retry_queue');
+});
 
 /**
  * Turn arbitrary form fields (keyed by label or field name) into a lead.
@@ -192,11 +238,18 @@ add_action('wpforms_process_complete', function ($fields, $entry, $form_data) {
 }, 10, 3);
 
 // Elementor Pro forms
-add_action('elementor_pro/forms/new_record', function ($record) {
+add_action('elementor_pro/forms/new_record', function ($record, $ajax_handler) {
     $data = [];
     foreach ((array) $record->get('fields') as $id => $f) $data[$f['title'] ?: $id] = $f['value'] ?? '';
     lcrm_send(lcrm_from_fields($data, $record->get_form_settings('form_name') ?: 'Elementor form'));
-});
+
+    // Send the visitor to the funnel's next step, unless the form has its own Redirect action.
+    $page_id = absint($_POST['queried_id'] ?? 0);
+    $next = $page_id ? lcrm_next_url($page_id) : '';
+    if ($next && !in_array('redirect', (array) $record->get_form_settings('submit_actions'), true)) {
+        $ajax_handler->add_response_data('redirect_url', $next);
+    }
+}, 10, 2);
 
 // Gravity Forms
 add_action('gform_after_submission', function ($entry, $form) {
@@ -231,7 +284,7 @@ function lcrm_woo_order($order_id) {
     if ($order->get_meta('_lcrm_sent')) return;
     $items = [];
     foreach ($order->get_items() as $item) $items[] = $item->get_name() . ' × ' . $item->get_quantity();
-    $sent = lcrm_send([
+    lcrm_send([
         'first_name' => $order->get_billing_first_name(),
         'last_name'  => $order->get_billing_last_name(),
         'email'      => $order->get_billing_email(),
@@ -242,5 +295,6 @@ function lcrm_woo_order($order_id) {
         'funnel'     => 'WooCommerce: ' . implode(', ', $items),
         'notes'      => sprintf('Order #%s — %s %s', $order->get_order_number(), $order->get_total(), $order->get_currency()),
     ]);
-    if ($sent === true) { $order->update_meta_data('_lcrm_sent', 1); $order->save(); }
+    $order->update_meta_data('_lcrm_sent', 1); // failed sends are queued and retried, so never send twice
+    $order->save();
 }
