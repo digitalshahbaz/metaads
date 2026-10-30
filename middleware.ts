@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE, verifyToken } from "@/lib/auth";
+import { COOKIE, readToken } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // Public: login page and the API-key protected webhook endpoint.
   if (pathname === "/login" || pathname.startsWith("/api/leads")) return NextResponse.next();
 
-  if (await verifyToken(req.cookies.get(COOKIE)?.value)) return NextResponse.next();
+  if (await readToken(req.cookies.get(COOKIE)?.value)) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

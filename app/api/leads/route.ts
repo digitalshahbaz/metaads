@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { normalizeLeadInput } from "@/lib/leads";
+import { flattenInput, normalizeLeadInput } from "@/lib/leads";
 import { upsertLead } from "@/lib/upsert";
 
 // Webhook for incoming leads (website forms, Zapier, Make, Pabbly, Meta Lead Ads via an automation tool).
@@ -45,13 +45,11 @@ export async function POST(req: NextRequest) {
   const merged: number[] = [];
   const params = req.nextUrl.searchParams;
   for (const raw of items) {
-    const lower: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(raw ?? {})) lower[k.toLowerCase()] = v;
     const l = normalizeLeadInput({
       source: params.get("source") ?? "api",
       business: params.get("business") ?? undefined,
       funnel: params.get("funnel") ?? undefined,
-      ...lower,
+      ...flattenInput(raw ?? {}),
     });
     const funnel = l.funnel ?? `API (${l.source})`;
     const now = new Date().toISOString();
@@ -59,8 +57,10 @@ export async function POST(req: NextRequest) {
       ...l,
       funnels: [funnel],
       last_seen: now,
-      touchpoints: [{ business: l.business, funnel, sheet: "Webhook", date: now }],
-    }, `Lead received via API (${funnel})`);
+      touchpoints: [{ business: l.business, funnel, sheet: "Webhook", date: now, utm: l.utm }],
+    });
+    await sql`INSERT INTO lead_activities (lead_id, type, content)
+      VALUES (${res.id}, 'system', ${`${res.created ? "New lead" : "Came in again"} via ${funnel}${l.utm.utm_campaign ? ` (campaign: ${l.utm.utm_campaign})` : ""}`})`;
     ids.push(res.id);
     if (!res.created) merged.push(res.id);
   }
@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "Invalid or missing API key" }, { status: 401 });
   const sql = await db();
-  const leads = await sql`SELECT * FROM leads ORDER BY created_at DESC LIMIT 500`;
-  return NextResponse.json({ leads });
+  const limit = Math.min(500, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 500));
+  const [[{ total }], leads] = await Promise.all([
+    sql`SELECT count(*)::int AS total FROM leads`,
+    sql`SELECT * FROM leads ORDER BY created_at DESC LIMIT ${limit}`,
+  ]);
+  return NextResponse.json({ total, leads });
 }

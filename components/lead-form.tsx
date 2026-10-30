@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { BUSINESSES, SOURCES, STATUSES, sourceLabel, type Lead } from "@/lib/leads";
+import { BUSINESSES, SOURCES, STATUSES, sourceLabel, type Lead, type TeamMember } from "@/lib/leads";
 
-export function LeadForm({ lead, action, cancelHref }: { lead?: Lead; action: (f: FormData) => void; cancelHref: string }) {
+export function LeadForm({ lead, action, cancelHref, team }: { lead?: Lead; action: (f: FormData) => void; cancelHref: string; team?: TeamMember[] }) {
   const sources = lead && !SOURCES.includes(lead.source) ? [lead.source, ...SOURCES] : SOURCES;
   const followUp = lead?.follow_up ? new Date(lead.follow_up).toISOString().slice(0, 10) : "";
   return (
@@ -10,9 +10,9 @@ export function LeadForm({ lead, action, cancelHref }: { lead?: Lead; action: (f
         <span className="label">Business *</span>
         <div className="grid gap-2 sm:grid-cols-3">
           {BUSINESSES.map((b) => (
-            <label key={b.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-300 p-2 text-sm has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 dark:border-zinc-700 dark:has-[:checked]:bg-indigo-950">
+            <label key={b.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-300 p-2 text-sm has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 dark:border-slate-700 dark:has-[:checked]:bg-indigo-950">
               <input type="radio" name="business" value={b.id} defaultChecked={(lead?.business ?? "dmm") === b.id} className="mt-1" />
-              <span><span className="font-medium">{b.label}</span><span className="block text-xs text-zinc-500">{b.hint}</span></span>
+              <span><span className="font-medium">{b.label}</span><span className="block text-xs muted">{b.hint}</span></span>
             </label>
           ))}
         </div>
@@ -36,6 +36,15 @@ export function LeadForm({ lead, action, cancelHref }: { lead?: Lead; action: (f
       <Field label="Niche / profession" name="profession" defaultValue={lead?.profession} placeholder="Life coach, student, agency owner…" />
       <Field label="City" name="city" defaultValue={lead?.city} />
       {!lead && <Field label="Funnel / campaign" name="funnel" placeholder="e.g. Referral, Instagram DM" />}
+      {!lead && team && team.length > 0 && (
+        <div>
+          <label className="label" htmlFor="owner_id">Assigned to</label>
+          <select id="owner_id" name="owner_id" className="input" defaultValue="">
+            <option value="">Unassigned</option>
+            {team.filter((m) => m.active).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+      )}
       <Field label="Deal value" name="value" type="number" step="any" min="0" defaultValue={lead ? Number(lead.value) || "" : ""} />
       <Field label="Follow-up date" name="follow_up" type="date" defaultValue={followUp} />
       <div className="sm:col-span-2">

@@ -8,6 +8,7 @@ import {
   type Business,
   type Lead,
   type Purchase,
+  type Utm,
 } from "@/lib/leads";
 
 export type TouchpointInput = {
@@ -16,6 +17,7 @@ export type TouchpointInput = {
   sheet?: string | null;
   date?: string | null;
   purchase?: Purchase | null;
+  utm?: Utm | null;
 };
 
 export type LeadInput = {
@@ -38,6 +40,9 @@ export type LeadInput = {
   first_seen?: string | null;
   last_seen?: string | null;
   touchpoints?: TouchpointInput[];
+  utm?: Utm | null;
+  owner_id?: number | null;
+  custom?: Record<string, string>;
 };
 
 const STATUS_RANK: Record<string, number> = { new: 0, contacted: 1, qualified: 2, proposal: 3, won: 4, lost: -1 };
@@ -69,6 +74,11 @@ export async function upsertLead(sql: postgres.Sql, input: LeadInput, activity?:
   const phone = normalizePhone(input.phone);
   const purchases = (input.purchases ?? []).map((p) => ({ ...p, amount: Number(p.amount) || 0 }));
   const touchpoints = input.touchpoints ?? [];
+  // Lead-level UTM = the latest touchpoint that carried one (or the explicit input).
+  const utm: Utm = input.utm && Object.values(input.utm).some(Boolean)
+    ? input.utm
+    : [...touchpoints].reverse().find((t) => t.utm && Object.values(t.utm).some(Boolean))?.utm ?? {};
+  const hasUtm = Boolean(utm.utm_source || utm.utm_campaign || utm.utm_content);
 
   const [existing] = email || phone
     ? await sql<Lead[]>`
@@ -92,13 +102,16 @@ export async function upsertLead(sql: postgres.Sql, input: LeadInput, activity?:
     const [row] = await sql<{ id: number }[]>`
       INSERT INTO leads (name, email, phone, company, source, status, value, tags, notes, follow_up,
                          business, funnels, is_customer, total_spent, purchases, score, temperature,
-                         profession, city, details, last_seen, created_at, updated_at)
+                         profession, city, details, last_seen, created_at, updated_at,
+                         owner_id, custom, utm_source, utm_medium, utm_campaign, utm_content, utm_term)
       VALUES (${input.name}, ${email ?? input.email ?? null}, ${phone ?? input.phone ?? null}, ${input.company ?? null},
               ${input.source ?? "manual"}, ${status}, ${input.value ?? 0}, ${uniq(input.tags ?? [])},
               ${input.notes ?? null}, ${input.follow_up ?? null}, ${business}, ${funnels}, ${isCustomer},
               ${total}, ${sql.json(purchases)}, ${score}, ${temperature}, ${input.profession ?? null},
               ${input.city ?? null}, ${sql.json(details)}, ${input.last_seen ?? input.first_seen ?? null},
-              ${input.first_seen ?? sql`now()`}, now())
+              ${input.first_seen ?? sql`now()`}, now(),
+              ${input.owner_id ?? null}, ${sql.json(input.custom ?? {})}, ${utm.utm_source ?? null},
+              ${utm.utm_medium ?? null}, ${utm.utm_campaign ?? null}, ${utm.utm_content ?? null}, ${utm.utm_term ?? null})
       RETURNING id`;
     await addTouchpoints(sql, row.id, touchpoints);
     if (activity) await sql`INSERT INTO lead_activities (lead_id, type, content) VALUES (${row.id}, 'system', ${activity})`;
@@ -146,6 +159,11 @@ export async function upsertLead(sql: postgres.Sql, input: LeadInput, activity?:
       details = ${sql.json(details)}, status = ${status}, notes = ${notes},
       score = ${score}, temperature = ${temperature}, last_seen = ${lastSeen},
       created_at = LEAST(created_at, ${input.first_seen ?? existing.created_at}::timestamptz),
+      owner_id = COALESCE(owner_id, ${input.owner_id ?? null}),
+      custom = ${sql.json({ ...(input.custom ?? {}), ...(existing.custom ?? {}) })},
+      ${hasUtm ? sql`utm_source = ${utm.utm_source ?? null}, utm_medium = ${utm.utm_medium ?? null},
+        utm_campaign = ${utm.utm_campaign ?? null}, utm_content = ${utm.utm_content ?? null},
+        utm_term = ${utm.utm_term ?? null},` : sql``}
       updated_at = now()
     WHERE id = ${existing.id}`;
   await addTouchpoints(sql, existing.id, touchpoints);
@@ -159,15 +177,35 @@ export async function upsertLead(sql: postgres.Sql, input: LeadInput, activity?:
 async function addTouchpoints(sql: postgres.Sql, leadId: number, tps: TouchpointInput[]) {
   for (const t of tps) {
     const at = t.date ? new Date(t.date) : null;
-    const [dup] = await sql`
-      SELECT 1 FROM lead_touchpoints
+    const u = t.utm ?? {};
+    const [dup] = await sql<{ id: number }[]>`
+      SELECT id FROM lead_touchpoints
       WHERE lead_id = ${leadId} AND funnel = ${t.funnel}
         AND captured_at IS NOT DISTINCT FROM ${at}
         AND purchase IS NOT DISTINCT FROM ${t.purchase ? sql.json(t.purchase) : null}`;
-    if (dup) continue;
+    if (dup) {
+      if (u.utm_source || u.utm_campaign || u.page_url) {
+        await sql`UPDATE lead_touchpoints SET
+            utm_source = COALESCE(utm_source, ${u.utm_source ?? null}), utm_medium = COALESCE(utm_medium, ${u.utm_medium ?? null}),
+            utm_campaign = COALESCE(utm_campaign, ${u.utm_campaign ?? null}), utm_content = COALESCE(utm_content, ${u.utm_content ?? null}),
+            utm_term = COALESCE(utm_term, ${u.utm_term ?? null}), page_url = COALESCE(page_url, ${u.page_url ?? null})
+          WHERE id = ${dup.id}`;
+      }
+      continue;
+    }
+    if (at) {
+      // A dated copy of an entry that was imported earlier without a date replaces it.
+      await sql`DELETE FROM lead_touchpoints WHERE lead_id = ${leadId} AND funnel = ${t.funnel} AND captured_at IS NULL
+                AND purchase IS NOT DISTINCT FROM ${t.purchase ? sql.json(t.purchase) : null}`;
+    }
     await sql`
-      INSERT INTO lead_touchpoints (lead_id, business, funnel, sheet, captured_at, purchase)
+      INSERT INTO lead_touchpoints (lead_id, business, funnel, sheet, captured_at, purchase,
+                                    utm_source, utm_medium, utm_campaign, utm_content, utm_term, page_url)
       VALUES (${leadId}, ${t.business}, ${t.funnel}, ${t.sheet ?? null}, ${at},
-              ${t.purchase ? sql.json(t.purchase) : null})`;
+              ${t.purchase ? sql.json(t.purchase) : null}, ${u.utm_source ?? null}, ${u.utm_medium ?? null},
+              ${u.utm_campaign ?? null}, ${u.utm_content ?? null}, ${u.utm_term ?? null}, ${u.page_url ?? null})`;
   }
+  // "entries" = how many times this person has come in (form fills, purchases, imports).
+  await sql`UPDATE leads SET entries = GREATEST(1, (SELECT count(*) FROM lead_touchpoints WHERE lead_id = ${leadId}))
+            WHERE id = ${leadId}`;
 }

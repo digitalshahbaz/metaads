@@ -1,10 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
+import { useRefreshTransition } from "./use-refresh-transition";
 import { deleteActivity, deleteLead } from "@/app/actions";
 
 export function DeleteLeadButton({ id }: { id: number }) {
-  const [pending, start] = useTransition();
+  const [pending, start] = useRefreshTransition();
   return (
     <button
       className="btn-danger w-full"
@@ -17,13 +17,13 @@ export function DeleteLeadButton({ id }: { id: number }) {
 }
 
 export function DeleteActivityButton({ leadId, activityId }: { leadId: number; activityId: number }) {
-  const [pending, start] = useTransition();
+  const [pending, start] = useRefreshTransition();
   return (
     <button
       aria-label="Delete activity"
       disabled={pending}
       onClick={() => confirm("Delete this entry?") && start(() => deleteActivity(leadId, activityId))}
-      className="shrink-0 self-start text-zinc-400 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+      className="shrink-0 self-start text-slate-400 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
     >
       ✕
     </button>
