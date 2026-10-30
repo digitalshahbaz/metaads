@@ -1,6 +1,9 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { canManage, requireSession } from "@/lib/session";
 
 export default async function SettingsPage() {
+  if (!canManage(await requireSession())) redirect("/");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "your-app.vercel.app";
   const proto = h.get("x-forwarded-proto") ?? "https";
@@ -9,11 +12,11 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-semibold">Integrations</h1>
+      <h1 className="page-title">Integrations</h1>
 
       <div className="card space-y-3 p-5 text-sm">
         <h2 className="text-base font-medium">Receive leads automatically (webhook)</h2>
-        <p className="text-zinc-600 dark:text-zinc-400">
+        <p className="text-slate-600 dark:text-slate-400">
           Send leads from your website forms, Zapier, Make, Pabbly Connect, or Meta Lead Ads (through one of those tools)
           straight into the CRM.
         </p>
@@ -23,27 +26,27 @@ export default async function SettingsPage() {
           </p>
         )}
         <dl className="grid gap-2 sm:grid-cols-[8rem_1fr]">
-          <dt className="text-zinc-500">URL</dt>
+          <dt className="muted">URL</dt>
           <dd><code className="break-all">{endpoint}</code></dd>
-          <dt className="text-zinc-500">Method</dt>
+          <dt className="muted">Method</dt>
           <dd><code>POST</code> (JSON or form data)</dd>
-          <dt className="text-zinc-500">Auth</dt>
+          <dt className="muted">Auth</dt>
           <dd>Header <code>x-api-key: YOUR_LEADS_API_KEY</code> or add <code>?key=YOUR_LEADS_API_KEY</code> to the URL</dd>
-          <dt className="text-zinc-500">Source tag</dt>
+          <dt className="muted">Source tag</dt>
           <dd>Add <code>&amp;source=meta_ads</code> to the URL, or send a <code>source</code> field</dd>
-          <dt className="text-zinc-500">Business</dt>
+          <dt className="muted">Business</dt>
           <dd><code>&amp;business=dmm</code> (Digimark Media) or <code>&amp;business=ds</code> (Digital Shahbaz)</dd>
-          <dt className="text-zinc-500">Funnel</dt>
+          <dt className="muted">Funnel</dt>
           <dd><code>&amp;funnel=Diwali%20Webinar</code>, so the lead&apos;s journey shows which funnel they came from</dd>
-          <dt className="text-zinc-500">Duplicates</dt>
+          <dt className="muted">Duplicates</dt>
           <dd>Same email or phone → merged into the existing lead (new funnel added, score updated)</dd>
         </dl>
         <p className="font-medium">Example</p>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">{`curl -X POST "${endpoint}?source=website" \\
+        <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{`curl -X POST "${endpoint}?source=website" \\
   -H "x-api-key: YOUR_LEADS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"name":"Rahul Sharma","email":"rahul@example.com","phone":"+91 98765 43210","company":"Acme","notes":"Wants a demo","tags":"hot, demo"}'`}</pre>
-        <p className="text-zinc-600 dark:text-zinc-400">
+        <p className="text-slate-600 dark:text-slate-400">
           Accepted fields: <code>name</code> (or <code>full_name</code>, <code>first_name</code>+<code>last_name</code>), <code>email</code>,{" "}
           <code>phone</code> (or <code>phone_number</code>), <code>company</code>, <code>source</code>, <code>status</code>, <code>value</code>,{" "}
           <code>tags</code>, <code>notes</code> (or <code>message</code>), <code>follow_up</code>, <code>profession</code> (or <code>niche</code>), <code>city</code>. Send <code>{`{"leads":[...]}`}</code> to add many at once.
@@ -52,12 +55,12 @@ export default async function SettingsPage() {
 
       <div className="card space-y-2 p-5 text-sm">
         <h2 className="text-base font-medium">Meta Lead Ads → CRM</h2>
-        <ol className="list-decimal space-y-1 pl-5 text-zinc-600 dark:text-zinc-400">
+        <ol className="list-decimal space-y-1 pl-5 text-slate-600 dark:text-slate-400">
           <li>In Zapier / Make / Pabbly, create a flow with trigger <b>Facebook Lead Ads → New Lead</b>.</li>
           <li>Add an action <b>Webhooks → POST</b> to <code className="break-all">{endpoint}?source=meta_ads&amp;business=dmm&amp;funnel=Coach%20Lead%20Ads&amp;key=YOUR_LEADS_API_KEY</code>.</li>
           <li>Map the fields <code>full_name</code>, <code>email</code>, <code>phone_number</code> (and any custom questions into <code>notes</code>).</li>
         </ol>
-        <p className="text-zinc-500">Or download leads from Meta Ads Manager and use <b>Import / Export</b> — the Meta CSV format is supported.</p>
+        <p className="muted">Or download leads from Meta Ads Manager and use <b>Import / Export</b> — the Meta CSV format is supported.</p>
       </div>
     </div>
   );

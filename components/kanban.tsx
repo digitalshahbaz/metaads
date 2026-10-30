@@ -37,12 +37,12 @@ export function Kanban({ leads }: { leads: Lead[] }) {
               if (lead && lead.status !== s.id) change(id, s.id);
             }}
             className={`flex w-64 shrink-0 flex-col rounded-xl border p-2 transition-colors ${
-              over === s.id ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40" : "border-zinc-200 bg-zinc-100/60 dark:border-zinc-800 dark:bg-zinc-900/60"
+              over === s.id ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40" : "border-slate-200 bg-slate-100/60 dark:border-slate-800 dark:bg-slate-900/60"
             }`}
           >
             <div className="flex items-center justify-between px-1 pb-2">
               <span className={`badge ${s.color}`}>{s.label} · {col.length}</span>
-              {total > 0 && <span className="text-xs tabular-nums text-zinc-500">{formatMoney(total)}</span>}
+              {total > 0 && <span className="text-xs tabular-nums muted">{formatMoney(total)}</span>}
             </div>
             <div className="flex min-h-24 flex-col gap-2">
               {col.map((l) => (
@@ -53,18 +53,18 @@ export function Kanban({ leads }: { leads: Lead[] }) {
                   className="card cursor-grab p-3 text-sm shadow-sm active:cursor-grabbing"
                 >
                   <Link href={`/leads/${l.id}`} className="font-medium hover:underline">{l.name}</Link>
-                  {l.company && <div className="text-xs text-zinc-500">{l.company}</div>}
-                  <div className="mt-2 flex items-center justify-between gap-1 text-xs text-zinc-500">
+                  {l.company && <div className="text-xs muted">{l.company}</div>}
+                  <div className="mt-2 flex items-center justify-between gap-1 text-xs muted">
                     <span className="flex gap-1"><BusinessBadge business={l.business} /><ScoreBadge score={l.score} temperature={l.temperature} /></span>
                     {Number(l.value) > 0 && <span className="tabular-nums">{formatMoney(l.value)}</span>}
                   </div>
-                  <div className="mt-1 truncate text-xs text-zinc-500" title={l.funnels.join("\n")}>{l.funnels[l.funnels.length - 1]}</div>
-                  {l.follow_up && <div className="mt-1 text-xs text-zinc-500">Follow-up: {formatDate(l.follow_up)}</div>}
+                  <div className="mt-1 truncate text-xs muted" title={l.funnels.join("\n")}>{l.funnels[l.funnels.length - 1]}</div>
+                  {l.follow_up && <div className="mt-1 text-xs muted">Follow-up: {formatDate(l.follow_up)}</div>}
                   <select
                     aria-label="Move to"
                     value={l.status}
                     onChange={(e) => change(l.id, e.target.value as Lead["status"])}
-                    className="mt-2 w-full rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs md:hidden dark:border-zinc-700"
+                    className="mt-2 w-full rounded border border-slate-200 bg-transparent px-1 py-0.5 text-xs md:hidden dark:border-slate-700"
                   >
                     {STATUSES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
                   </select>

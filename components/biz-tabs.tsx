@@ -17,13 +17,13 @@ export function BizTabs({ path, params }: { path: string; params: Record<string,
     return s ? `${path}?${s}` : path;
   };
   return (
-    <div className="inline-flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-sm dark:border-slate-800 dark:bg-slate-900">
       {TABS.map((t) => (
         <Link
           key={t.id}
           href={href(t.id)}
           className={`rounded-md px-3 py-1.5 whitespace-nowrap ${
-            active === t.id ? "bg-indigo-600 font-medium text-white" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            active === t.id ? "bg-indigo-600 font-medium text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
           }`}
         >
           {t.label}

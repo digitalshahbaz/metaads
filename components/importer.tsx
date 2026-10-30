@@ -105,14 +105,14 @@ export function Importer() {
       {rows.length > 0 && (
         <>
           <p className="text-sm"><b>{rows.length}</b> rows found in {fileName}. Preview:</p>
-          <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-50 dark:bg-zinc-800/50">
+              <thead className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>{headers.map((h) => <th key={h} className="p-2 font-medium whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.slice(0, 5).map((r, i) => (
-                  <tr key={i} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
                     {headers.map((h) => <td key={h} className="max-w-48 truncate p-2">{r[h]}</td>)}
                   </tr>
                 ))}
@@ -146,7 +146,7 @@ export function Importer() {
         </button>
       )}
 
-      {result && <p className="rounded-lg bg-zinc-100 p-3 text-sm dark:bg-zinc-800">{result}</p>}
+      {result && <p className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800">{result}</p>}
     </div>
   );
 }
